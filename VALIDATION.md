@@ -10,7 +10,7 @@ This role simulation is a single-PC UI check, not a multi-client multiplayer tes
 
 The diagnostic archive was removed from the active installation after testing. Release SHA-256: `B0004E224384BF05C3BD7747814B36A88256C0EF519B99280722A25FB340A146`.
 
-Publication completed on 23 November 2026 as listing **594034**, author **TypeEkcyall**, description version **2026.11.23.2**. The automatically installed store download matches the clean release archive byte-for-byte. Despite the unchanged project GUID, the native publisher created a replacement listing rather than updating 594033. The old installed version and local development copy are disabled; the latest published copy is enabled. The website rejected an attempt to unlist the old version because its edit form does not offer AoE IV as a game selection. The old listing remains pending the owner's decision about permanent removal.
+Publication completed on 23 November 2026 as listing **594034**, author **TypeEkcyall**, description version **2026.11.23.2**. The automatically installed store download matches the clean release archive byte-for-byte. Despite the unchanged project GUID, the native publisher created a replacement listing rather than updating 594033. The old installed version and local development copy are disabled; the latest published copy is enabled. The website rejected an attempt to unlist the old version because its edit form does not offer AoE IV as a game selection. After explicit owner approval, listing **594033** was permanently removed; the account's My Mods page retained only the latest Knowledge is Power listing. Existing subscribers need to subscribe to **594034**.
 
 ## Previous release validation: 2026.11.23.1
 
