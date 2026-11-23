@@ -1,4 +1,16 @@
-# Release validation: 2026.11.23.2
+# Release validation: 2026.11.23.3
+
+The actual-Lua trivia suite passes for shared team bills in 2v2, 3v2 and 4v2 at all four ages, rotating rounding remainders, frozen mixed-age stakes, the unchanged 10% villager fallback, one pass per team per match, answerer-only authority, invalid/late/duplicate requests, answer/pass races, round changes, reassignment, simulated restore, old save compatibility, AI affordability-based pass decisions, teammate suggestions, UI bindings and XAML parsing.
+
+The Content Editor compiled version 2026.11.23.3 with zero errors and warnings. Archive verification confirms all 103 SCAR scripts match release source, all five compiled localization descriptions contain the current version, and no diagnostic markers are included. The installed local archive matches the build. Release SHA-256: `74DFD22C3FD4BA2C463DD277E4964423E08192BC0F530F11D70175C6F83909F0`.
+
+The first upload was rejected for Simplified Chinese localization ID 211, whose inherited value was `3x`. That label now reads `三倍` (three times). A native rebuild and archive inspection verified the corrected compiled text. The in-game checks below used the preceding archive `26D0E18A0076AC238208BABCF62564071B834FD9A4C150C76A129541973EB4B4`; gameplay scripts are byte-identical in the final archive.
+
+Native checks used the clean release archive in an English versus House of Lancaster AI skirmish, without a tuning pack. The pass button rendered above the question, and clicking it before the deadline displayed `Pass used`, `Question passed` and the centre-screen announcement. Resources remained 200 food, 200 wood, 100 gold and 0 stone; both remaining villagers survived. No answer was revealed. The next question retained the disabled `Pass used` control and its timeout applied the normal penalty. Earlier clicks that arrived after the deadline were rejected, left the pass available, and applied the normal timeout penalty. These delayed clicks are not counted as successful pass checks. Team authority and restored state are covered by the automated Lua tests; native multiplayer and save/load remain unverified.
+
+Publication completed on 23 November 2026 as listing **594036**, author **TypeEkcyall**, with description version **2026.11.23.3**. The store download is byte-identical to the final release archive above (318360 bytes; engine version `65c8b8f5e3706ba1bf31b85a418e3287`). The native publisher again created a new listing despite the unchanged project GUID. The rejected upload 594035 never appeared in My Mods. Following the owner's instruction to remove superseded listings, 594034 was deleted; the account's My Mods page now contains only 594036 for Knowledge is Power. The current published copy is enabled in-game, with the local development copy and cached older versions disabled. Existing players should subscribe to https://www.ageofempires.com/mods/details/594036/.
+
+## Previous release validation: 2026.11.23.2
 
 All four automated suites below pass with the teammate advice changes. Additional actual-Lua checks cover sending and changing suggestions, invalid senders and payloads, opposing teams, expired rounds, eliminated players, reassignment, old save data without suggestions, reset between rounds, and UI command routing. Suggestions do not resolve the question, consume RNG, or change resources. Only the assigned answerer can submit the final answer.
 

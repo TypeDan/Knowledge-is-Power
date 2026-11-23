@@ -27,8 +27,8 @@ UI_SetDataContext=function(name,data) context=data end
 UI_CreateCommand=function(name) return name end
 UI_CreateDataContext=function(data) return data end
 UI_AddChild=function(a,b,c,args) xaml=args.Xaml end
-Rule_AddInterval=function() end;Rule_Remove=function() end
-Network_RegisterEvent=function() end
+Rule_AddInterval=function() end;Rule_Remove=function() end;Rule_Exists=function() return false end
+registered={};Network_RegisterEvent=function(name) registered[name]=true end
 Network_CallEvent=function(name,message) lastNetwork={name,message} end
 EGroup_ForEach=function(group,fn) for i,e in ipairs(group) do fn(group,i,e) end end
 Entity_IsAlive=function(e) return not e.dead end
@@ -47,7 +47,7 @@ World_GetRand=function(a,b)
     return a+seed%(b-a+1)
 end
 function reset()
-    KIP={running=true,time=0,round=0,nextRound=180,teams={},turns={},deck={},deckIndex=1}
+    KIP={running=true,time=0,round=0,nextRound=180,teams={},turns={},passesUsed={},deck={},deckIndex=1}
     KIP_UI={created=false,open=false,assignment="",submitted=""}
     KIP_CONFIG.general=true;KIP_CONFIG.christmas=true
     resources={};entities={};localPlayer=12
@@ -63,7 +63,8 @@ KIP_Tick();assert(KIP.round==1 and KIP.nextRound==360 and #KIP.teams==2)
 local team=KIP.teams[1]
 assert(team.members[1]==12 and team.members[2]==41 and team.deadline==200)
 assert(KIP.teams[2].answerer==73) -- AI teammates never take a human's turn.
-assert(team.costs[1]==100 and team.costs[3]==150)
+assert(team.costs[1]+team.costs[3]==team.prize/3)
+assert(math.abs(team.costs[1]-team.costs[3])<=1)
 local expected=team.prize
 local correct=team.question.correct
 local other=team.answerer==12 and 41 or 12
@@ -81,16 +82,17 @@ for resource=1,4 do
 end
 assert(resources[73][1]==1000 and resources[18][1]==1000)
 
--- Wrong: full individual bill or one rounded-up 10% villager loss, no partial bill.
+-- Wrong: the frozen share of the team bill or 10% villagers, no partial bill.
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
-resources[41]={1000,149,1000,1000}
+local insufficient=team.costs[3]-1
+resources[41]={1000,insufficient,1000,1000}
 for i=1,35 do table.insert(entities[41],{id=100-i,kind='villager'}) end
 table.insert(entities[41],{id=0,kind='trader'})
 table.insert(entities[41],{id=1,kind='villager',dead=true})
 local wrong=team.question.correct%4+1
 assert(KIP_AnswerNetwork(team.answerer,'1:'..wrong))
-for r=1,4 do assert(resources[12][r]==900) end
-assert(resources[41][1]==1000 and resources[41][2]==149)
+for r=1,4 do assert(resources[12][r]==1000-team.costs[1]) end
+assert(resources[41][1]==1000 and resources[41][2]==insufficient)
 assert(#KIP_PlayerVillagers(41)==31 and team.effects[3].lost==4)
 assert(not entities[41][36].dead) -- Trader is never a villager casualty.
 for _,count in ipairs({0,1,6,10,11,20,35,40,101}) do
@@ -100,12 +102,13 @@ for _,count in ipairs({0,1,6,10,11,20,35,40,101}) do
     assert(effect.lost==math.ceil(count/10) and #KIP_PlayerVillagers(41)==count-math.ceil(count/10))
 end
 
--- Every age has an exact one-third bill. No cross-player age leakage.
+-- Every age has a team bill exactly one-third of the prize.
 for age,amount in ipairs({300,450,600,900}) do
-    reset();players[1].age=age;KIP_StartRound(KIP_LivePlayers())
-    assert(KIP.teams[1].costs[3]==amount/3)
+    reset();players[1].age=age;players[2].age=age;KIP_StartRound(KIP_LivePlayers())
+    assert(KIP.teams[1].prize==amount)
+    assert(KIP.teams[1].costs[1]+KIP.teams[1].costs[3]==amount/3)
 end
-players[1].age=2
+players[1].age=2;players[2].age=1
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
 local original=team.prize;find(team.answerer).age=4
 assert(team.prize==original) -- Displayed stake is fixed when the question opens.
@@ -115,7 +118,7 @@ players[1].age=2;players[2].age=1
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
 for i=1,19 do KIP_Tick() end
 assert(team.status=='pending')
-KIP_Tick();assert(team.status=='timeout' and resources[12][1]==900)
+KIP_Tick();assert(team.status=='timeout' and resources[12][1]==1000-team.costs[1])
 assert(not KIP_AnswerNetwork(team.answerer,'1:'..team.question.correct))
 for i=1,159 do KIP_Tick() end
 assert(KIP.round==1)
@@ -147,6 +150,101 @@ for coin=1,100 do
 end
 assert(successes==50);World_GetRand=actualRng;players[3].human=true
 
+-- Unequal team sizes have equal total prizes and bills at every age.
+local originalPlayers=players
+for _,size in ipairs({2,3,4}) do
+    for age,prize in ipairs({300,450,600,900}) do
+        players={}
+        for i=1,size+2 do
+            table.insert(players,{id=i*11,slot=i,team=i<=size and 1 or 2,age=age,human=true})
+        end
+        reset()
+        local totalPaid={}
+        for round=1,size do
+            KIP_StartRound(KIP_LivePlayers())
+            for _,entry in ipairs(KIP.teams) do
+                local bill=0
+                for _,id in ipairs(entry.members) do
+                    local cost=entry.costs[Player_GetSlotIndex(id)]
+                    bill=bill+cost;totalPaid[id]=(totalPaid[id] or 0)+cost
+                end
+                assert(bill==prize/3 and entry.prize==prize)
+                assert(KIP_AnswerNetwork(entry.answerer,tostring(round)..':'..(entry.question.correct%4+1)))
+            end
+        end
+        for i=1,size do assert(totalPaid[players[i].id]==prize/3) end -- Remainders rotate fairly.
+        KIP_StartRound(KIP_LivePlayers())
+        for _,entry in ipairs(KIP.teams) do
+            local before=0
+            for _,id in ipairs(entry.members) do before=before+resources[id][1] end
+            assert(KIP_AnswerNetwork(entry.answerer,tostring(entry.round)..':'..entry.question.correct))
+            local after=0
+            for _,id in ipairs(entry.members) do after=after+resources[id][1] end
+            assert(after-before==prize)
+        end
+    end
+end
+players=originalPlayers;reset()
+
+-- A team pass has no resource/villager/RNG effect, and only the chosen human can use it.
+KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+local passer=team.answerer
+local helper=passer==12 and 41 or 12
+for _,id in ipairs(team.members) do
+    resources[id]={0,0,0,0}
+    for i=1,11 do table.insert(entities[id],{id=i,kind='villager'}) end
+end
+assert(not KIP_PassNetwork(helper,'1'))
+assert(not KIP_PassNetwork(999,'1'))
+assert(not KIP_PassNetwork(18,'1'))
+for _,bad in ipairs({'0','2','1:1','1x','-1','1.0',string.rep('1',40)}) do assert(not KIP_PassNetwork(passer,bad)) end
+assert(not KIP_PassNetwork(passer,{}))
+find(passer).isEliminated=true;assert(not KIP_PassNetwork(passer,'1'));find(passer).isEliminated=false
+KIP.time=team.deadline;assert(not KIP_PassNetwork(passer,'1'));KIP.time=0
+local before=randomCalls
+assert(KIP_PassNetwork(passer,'1'))
+assert(team.status=='passed' and not KIP_HasPass(team) and randomCalls==before)
+assert(KIP_HasPass(KIP.teams[2]) and KIP.teams[2].status=='pending')
+for _,id in ipairs(team.members) do
+    assert(#KIP_PlayerVillagers(id)==11)
+    for r=1,4 do assert(resources[id][r]==0) end
+end
+assert(not KIP_PassNetwork(passer,'1'))
+assert(not KIP_AnswerNetwork(passer,'1:'..team.question.correct))
+assert(not KIP_SuggestNetwork(helper,'1:1'))
+for i=1,20 do KIP_Tick() end
+assert(team.status=='passed' and #KIP_PlayerVillagers(passer)==11)
+Knowledge_OnGameRestore();assert(not KIP_HasPass(team) and registered.KIP_PassNetwork)
+for i=2,5 do
+    KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+    assert(not KIP_HasPass(team))
+    assert(not KIP_PassNetwork(team.answerer,tostring(i)))
+end
+assert(KIP_HasPass(KIP.teams[2])) -- Other teams retain their own pass.
+assert(KIP_PassNetwork(KIP.teams[2].answerer,'5'))
+
+-- Answer/pass races settle exactly once; old saves have an unused pass.
+reset();KIP.passesUsed=nil;KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+assert(KIP_HasPass(team))
+assert(KIP_AnswerNetwork(team.answerer,'1:'..team.question.correct))
+assert(not KIP_PassNetwork(team.answerer,'1') and KIP_HasPass(team))
+KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+find(team.answerer).isEliminated=true;KIP_Tick()
+assert(KIP_PassNetwork(team.answerer,'2')) -- Reassigned answerer can spend the same team pass.
+
+-- AI pass decisions use affordability, never their hidden correct/incorrect coin flip.
+for _,wouldBeCorrect in ipairs({true,false}) do
+    reset();players[3].human=false;KIP_StartRound(KIP_LivePlayers())
+    local ai=KIP.teams[2];ai.aiCorrect=wouldBeCorrect
+    resources[73]={0,0,0,0};entities[73]={{id=1,kind='villager'}}
+    KIP.time=ai.aiAt-1;KIP_Tick()
+    assert(ai.status=='passed' and #KIP_PlayerVillagers(73)==1)
+    KIP_StartRound(KIP_LivePlayers());ai=KIP.teams[2];ai.aiCorrect=false
+    KIP.time=ai.aiAt-1;KIP_Tick()
+    assert(ai.status=='wrong' and #KIP_PlayerVillagers(73)==0)
+    players[3].human=true
+end
+
 -- No repeated questions before the enabled bank is exhausted; options remain a permutation.
 reset();local seen={};local answerPositions={}
 for i=1,#KIP_QUESTIONS do
@@ -165,7 +263,7 @@ assert(KIP_NextQuestion()==nil);Knowledge_OnPlay();assert(not KIP.running)
 
 -- Suggestions are per sender, scoped to their team, and cannot settle a round.
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
-local helper=team.answerer==12 and 41 or 12
+helper=team.answerer==12 and 41 or 12
 local before=randomCalls
 assert(KIP_SuggestNetwork(helper,'1:2'))
 assert(team.suggestions[Player_GetSlotIndex(helper)]==2 and team.status=='pending')
@@ -228,7 +326,24 @@ find(helper).isEliminated=false
 team.suggestions=nil;KIP_RefreshUI();assert(context.suggestionsVisibility=='Visible')
 localPlayer=team.answerer;KIP_RefreshUI();KIP_UIAnswer(context.payloads.A)
 assert(lastNetwork[1]=='KIP_AnswerNetwork' and lastNetwork[2]=='1:1' and not context.enabled)
+-- Pass control: helpers see availability, only answerer sends, and spent state persists.
+reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+localPlayer=team.answerer;KIP_CreateUI()
+assert(context.passLabel=='Pass (1)' and context.passEnabled and context.passPayload=='1')
+localPlayer=team.answerer==12 and 41 or 12;KIP_RefreshUI()
+lastNetwork=nil;KIP_UIPass('1');assert(lastNetwork==nil and not context.passEnabled)
+localPlayer=team.answerer;KIP_RefreshUI();KIP_UIPass(context.passPayload)
+assert(lastNetwork[1]=='KIP_PassNetwork' and lastNetwork[2]=='1' and not context.enabled and not context.passEnabled)
+lastNetwork=nil;KIP_UIAnswer('1:1');KIP_UIPass('1');assert(lastNetwork==nil)
+assert(KIP_PassNetwork(team.answerer,'1'))
+assert(context.passLabel=='Pass used' and context.status=='Question passed.')
+assert(context.result=='Team pass used. No reward or penalty.')
+Knowledge_OnGameRestore();assert(context.passLabel=='Pass used' and not context.passEnabled)
+KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1];localPlayer=team.answerer;KIP_RefreshUI()
+assert(context.passLabel=='Pass used' and context.enabled and not context.passEnabled)
+
 -- Native player handles are opaque objects, not numbers or concatenable text.
+reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1];localPlayer=team.answerer;KIP_CreateUI()
 local handle={};local oldAnswerer=team.answerer
 for i,id in ipairs(team.members) do if id==oldAnswerer then team.members[i]=handle end end
 find(oldAnswerer).id=handle
@@ -245,4 +360,4 @@ team.status='correct';team.effects[1]={won=150};KIP_RefreshUI()
 assert(string.find(context.result,'You received 150 of each resource.',1,true))
 ''')
 ET.fromstring(lua.globals().xaml)
-print('PASS: timing, answer/suggestion authority, mixed-age team pot, exact penalties, 10% casualties, AI odds, no-repeat questions, rotation, teammate advice, UI privacy and XAML.')
+print('PASS: timing, answer/suggestion/pass authority, 3v2 and 4v2 shared bills, rotating remainders, match-long passes, restore, AI pass policy, 10% casualties, AI odds, no-repeat questions, rotation, teammate advice, UI privacy and XAML.')

@@ -20,7 +20,7 @@ function KIP_AnnounceRound()
 end
 function KIP_AnnounceResult(team)
     if KIP_LocalTeam()~=team then return end
-    local keys={correct=3006,wrong=3007,timeout=3008,cancelled=3009}
+    local keys={correct=3006,wrong=3007,timeout=3008,cancelled=3009,passed=3010}
     KIP_Notify(keys[team.status] or 3009)
 end
 function KIP_UIToggle()
@@ -47,6 +47,21 @@ function KIP_UIAnswer(message)
     end
     KIP_RefreshUI()
 end
+function KIP_UIPass(message)
+    if type(message)~="string" or #message>32 or not string.match(message,"^%d+$") then return end
+    local team=KIP_LocalTeam()
+    local player=Game_GetLocalPlayer()
+    if not KIP.running or not team or not team.human or team.answerer~=player or team.status~="pending" or KIP.time>=team.deadline or not KIP_HasPass(team) or KIP_UI.submitted~="" then return end
+    if tonumber(message)~=team.round then return end
+    local eligible=false
+    for _,p in ipairs(KIP_CurrentMembers(team,KIP_LivePlayers())) do
+        if p.id==player and Player_IsHuman(player) then eligible=true end
+    end
+    if not eligible then return end
+    KIP_UI.submitted="pass"
+    Network_CallEvent("KIP_PassNetwork",message)
+    KIP_RefreshUI()
+end
 function KIP_RefreshUI()
     if not KIP_UI.created then return end
     local player=Game_GetLocalPlayer()
@@ -65,7 +80,10 @@ function KIP_RefreshUI()
     end
     local active=KIP.running and team~=nil and team.status=="pending"
     local canChoose=active and team.human and eligible and KIP.time<team.deadline and (not isAnswerer or KIP_UI.submitted=="")
-    local data={toggle=KIP_UI.toggle,answer=KIP_UI.answer,
+    local data={toggle=KIP_UI.toggle,answer=KIP_UI.answer,pass=KIP_UI.pass,
+        passLabel=KIP_HasPass(team) and "Pass (1)" or "Pass used",
+        passEnabled=canChoose and isAnswerer and KIP_HasPass(team),
+        passVisibility=team and "Visible" or "Collapsed",passPayload=team and tostring(team.round) or "",
         rootVisibility=KIP.running and "Visible" or "Collapsed",
         visibility=KIP_UI.open and "Visible" or "Collapsed",
         questionVisibility=active and "Visible" or "Collapsed",
@@ -77,7 +95,7 @@ function KIP_RefreshUI()
         if active then
             data.timer=math.max(0,team.deadline-KIP.time).." seconds remaining"
             data.status=isAnswerer and "Your turn. Choose the team's final answer." or (KIP_PlayerName(team.answerer).." is answering. Choose a suggestion below.")
-            if KIP_UI.submitted~="" and isAnswerer then data.status="Answer submitted..." end
+            if KIP_UI.submitted~="" and isAnswerer then data.status=KIP_UI.submitted=="pass" and "Using team pass..." or "Answer submitted..." end
             if not eligible then data.status=KIP_PlayerName(team.answerer).." is answering for your team." end
             data.stakes="Correct: "..team.prize.." of EACH resource, split across the team.\nWrong: you pay "..(team.costs[slot] or 0).." of each, or lose 10% of your villagers if you cannot pay."
             data.question=team.question.text
@@ -108,6 +126,9 @@ function KIP_RefreshUI()
             elseif team.status=="cancelled" then
                 data.status="Round cancelled."
                 data.result="No eligible answerer. No reward or penalty."
+            elseif team.status=="passed" then
+                data.status="Question passed."
+                data.result="Team pass used. No reward or penalty."
             else
                 data.status=team.status=="timeout" and "Time ran out." or "Incorrect answer."
                 if effect and effect.lost and effect.lost>0 then
@@ -116,7 +137,7 @@ function KIP_RefreshUI()
                     data.result="You paid "..effect.paid.." of each resource."
                 else data.result="No resources charged; no villagers available." end
             end
-            if team.status~="cancelled" then
+            if team.status~="cancelled" and team.status~="passed" then
                 data.result=data.result.."\nAnswer: "..team.question.options[team.question.correct]
             end
             data.resultVisibility="Visible"
@@ -151,6 +172,7 @@ function KIP_CreateUI()
     <StackPanel>
     <TextBlock Text="{Binding [title]}" FontSize="16" FontWeight="Bold" Foreground="#FFFFDF88" Margin="0,0,0,6"/>
     <TextBlock Text="{Binding [timer]}" FontSize="13" Foreground="#FFFFDF88" Margin="0,0,0,6"/>
+    <Button Content="{Binding [passLabel]}" Command="{Binding [pass]}" CommandParameter="{Binding [passPayload]}" IsEnabled="{Binding [passEnabled]}" Visibility="{Binding [passVisibility]}" ToolTip="Skip with no reward or penalty. One shared team pass for the entire match." HorizontalAlignment="Left" Margin="0,0,0,6" Style="{StaticResource KnowledgeButton}"/>
     <ScrollViewer MaxHeight="370" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
     <TextBlock Text="{Binding [status]}" TextWrapping="Wrap" FontSize="13" Foreground="White" Margin="0,0,0,8"/>
     <StackPanel Visibility="{Binding [questionVisibility]}">
@@ -165,8 +187,9 @@ function KIP_CreateUI()
     </StackPanel></ScrollViewer></StackPanel></Border></StackPanel></Grid>]]
     KIP_UI.toggle=UI_CreateCommand("KIP_UIToggle")
     KIP_UI.answer=UI_CreateCommand("KIP_UIAnswer")
+    KIP_UI.pass=UI_CreateCommand("KIP_UIPass")
     UI_AddChild("ScarNotReplay","XamlPresenter","KnowledgeTrivia",{IsHitTestVisible=true,Xaml=xaml,
-        DataContext=UI_CreateDataContext({visibility="Collapsed",rootVisibility="Visible",toggle=KIP_UI.toggle,answer=KIP_UI.answer})})
+        DataContext=UI_CreateDataContext({visibility="Collapsed",rootVisibility="Visible",toggle=KIP_UI.toggle,answer=KIP_UI.answer,pass=KIP_UI.pass})})
     KIP_UI.created=true
     KIP_RefreshUI()
 end
