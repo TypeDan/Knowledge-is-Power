@@ -1,0 +1,269 @@
+import("trivia/questions.scar")
+import("trivia/knowledge_ui.scar")
+Core_RegisterModule("Knowledge")
+
+KIP_LOC = "$9c0607f0c04e454fb0918543c221c793:"
+KIP_CONFIG = {interval=180, answerSeconds=20, rewards={300,450,600,900}, general=true, christmas=true}
+KIP = {running=false,time=0,round=0,nextRound=180,teams={},turns={},deck={},deckIndex=1}
+
+function Knowledge_SetupSettings(options)
+    local settings=options.section_knowledge_trivia or {}
+    if settings.general_questions~=nil then KIP_CONFIG.general=settings.general_questions end
+    if settings.christmas_questions~=nil then KIP_CONFIG.christmas=settings.christmas_questions end
+end
+
+function KIP_LivePlayers()
+    local players={}
+    for i=1,World_GetPlayerCount() do
+        local player=Core_GetPlayersTableEntryFromIndex(i)
+        if player and not player.isEliminated then table.insert(players,player) end
+    end
+    table.sort(players,function(a,b) return Player_GetSlotIndex(a.id)<Player_GetSlotIndex(b.id) end)
+    return players
+end
+
+function KIP_Age(player)
+    return math.max(1,math.min(4,Player_GetCurrentAge(player)))
+end
+
+function KIP_TeamKey(player)
+    if player.AGS_Team then return tostring(player.AGS_Team.index) end
+    local team=Player_GetTeam(player.id)
+    if team>=100 then return "solo_"..Player_GetSlotIndex(player.id) end
+    return tostring(team)
+end
+
+function KIP_GroupPlayers(players)
+    local teams,byKey={},{}
+    for _,player in ipairs(players) do
+        local key=KIP_TeamKey(player)
+        if not byKey[key] then
+            byKey[key]={key=key,members={}}
+            table.insert(teams,byKey[key])
+        end
+        table.insert(byKey[key].members,player)
+    end
+    return teams
+end
+
+function KIP_Shuffle(values)
+    for i=#values,2,-1 do
+        local j=World_GetRand(1,i)
+        values[i],values[j]=values[j],values[i]
+    end
+end
+
+function KIP_NextQuestion()
+    if KIP.deckIndex>#KIP.deck then
+        KIP.deck={}
+        for i,q in ipairs(KIP_QUESTIONS) do
+            if (q.category=="general" and KIP_CONFIG.general) or (q.category=="christmas" and KIP_CONFIG.christmas) then
+                table.insert(KIP.deck,i)
+            end
+        end
+        if #KIP.deck==0 then return nil end
+        KIP_Shuffle(KIP.deck)
+        if #KIP.deck>1 and KIP.deck[1]==KIP.lastQuestion then KIP.deck[1],KIP.deck[2]=KIP.deck[2],KIP.deck[1] end
+        KIP.deckIndex=1
+    end
+    local id=KIP.deck[KIP.deckIndex]
+    KIP.deckIndex=KIP.deckIndex+1; KIP.lastQuestion=id
+    local source=KIP_QUESTIONS[id]
+    local order={1,2,3,4};KIP_Shuffle(order)
+    local question={id=id,text=source.text,category=source.category,options={}}
+    for i,index in ipairs(order) do
+        question.options[i]=source.options[index]
+        if index==source.correct then question.correct=i end
+    end
+    return question
+end
+
+-- Pick randomly among the humans who have answered the fewest rounds.
+function KIP_ChooseAnswerer(team,players)
+    KIP.turns[team.key]=KIP.turns[team.key] or {}
+    local turns=KIP.turns[team.key]
+    local candidates,minimum={},nil
+    for _,p in ipairs(players) do
+        if Player_IsHuman(p.id) then
+            local count=turns[Player_GetSlotIndex(p.id)] or 0
+            if minimum==nil or count<minimum then candidates={};minimum=count end
+            if count==minimum then table.insert(candidates,p) end
+        end
+    end
+    if #candidates==0 then return nil end
+    local selected=candidates[World_GetRand(1,#candidates)]
+    local slot=Player_GetSlotIndex(selected.id)
+    turns[slot]=(turns[slot] or 0)+1
+    return selected
+end
+
+function KIP_StartRound(players)
+    local question=KIP_NextQuestion()
+    if not question then return end
+    KIP.round=KIP.round+1;KIP.teams={}
+    for _,group in ipairs(KIP_GroupPlayers(players)) do
+        local chosen=KIP_ChooseAnswerer(group,group.members)
+        local answerer=chosen or group.members[1]
+        local entry={key=group.key,round=KIP.round,members={},costs={},question=question,
+            answerer=answerer.id,human=chosen~=nil,deadline=KIP.time+KIP_CONFIG.answerSeconds,
+            prize=KIP_CONFIG.rewards[KIP_Age(answerer.id)],status="pending",effects={}}
+        for _,p in ipairs(group.members) do
+            table.insert(entry.members,p.id)
+            entry.costs[Player_GetSlotIndex(p.id)]=math.floor(KIP_CONFIG.rewards[KIP_Age(p.id)]/3)
+        end
+        if not chosen then
+            entry.aiAt=KIP.time+World_GetRand(5,KIP_CONFIG.answerSeconds-2)
+            entry.aiCorrect=World_GetRand(1,100)<=50
+        end
+        table.insert(KIP.teams,entry)
+    end
+    KIP_AnnounceRound()
+end
+
+function KIP_CurrentMembers(team,players)
+    local live={};local members={}
+    for _,p in ipairs(players) do live[Player_GetSlotIndex(p.id)]=p end
+    for _,id in ipairs(team.members) do
+        local p=live[Player_GetSlotIndex(id)]
+        if p and KIP_TeamKey(p)==team.key then table.insert(members,p) end
+    end
+    return members
+end
+
+function KIP_PlayerVillagers(player)
+    local result={}
+    EGroup_ForEach(Player_GetAllEntities(player),function(group,index,entity)
+        if Entity_IsAlive(entity) and Entity_IsOfType(entity,AGS_BP_VILLAGER) then
+            table.insert(result,{entity=entity,id=Entity_GetID(entity)})
+        end
+    end)
+    table.sort(result,function(a,b) return a.id<b.id end)
+    return result
+end
+
+function KIP_ApplyPenalty(player,cost)
+    local resources={RT_Food,RT_Wood,RT_Gold,RT_Stone}
+    local affordable=true
+    for _,resource in ipairs(resources) do
+        if Player_GetResource(player,resource)<cost then affordable=false end
+    end
+    if affordable then
+        for _,resource in ipairs(resources) do Player_AddResource(player,resource,-cost) end
+        return {paid=cost,lost=0}
+    end
+    -- An unaffordable bill is replaced by one 10% loss, never four losses.
+    -- No partial debit; rounding up means 1-10 living villagers lose one.
+    local villagers=KIP_PlayerVillagers(player)
+    local count=math.ceil(#villagers/10)
+    for i=1,count do Entity_Kill(villagers[i].entity) end
+    return {paid=0,lost=count}
+end
+
+function KIP_Resolve(team,correct,reason,players)
+    if team.status~="pending" then return false end
+    team.status=correct and "correct" or (reason or "wrong")
+    local members=KIP_CurrentMembers(team,players)
+    if #members==0 then team.status="cancelled";return false end
+    if correct then
+        local share=math.floor(team.prize/#members)
+        local remainder=team.prize-share*#members
+        for i,p in ipairs(members) do
+            -- Rotate indivisible remainder units rather than favouring the host.
+            local extra=((i-1-(team.round-1)) % #members)<remainder and 1 or 0
+            local amount=share+extra
+            for _,resource in ipairs({RT_Food,RT_Wood,RT_Gold,RT_Stone}) do Player_AddResource(p.id,resource,amount) end
+            team.effects[Player_GetSlotIndex(p.id)]={won=amount}
+        end
+    else
+        for _,p in ipairs(members) do
+            local slot=Player_GetSlotIndex(p.id)
+            team.effects[slot]=KIP_ApplyPenalty(p.id,team.costs[slot])
+        end
+    end
+    KIP_AnnounceResult(team)
+    KIP_RefreshUI()
+    return true
+end
+
+-- Only synchronized input with the real network sender may settle a question.
+function KIP_AnswerNetwork(sender,message)
+    if not KIP.running or type(message)~="string" or #message>32 then return false end
+    local round,choice=string.match(message,"^(%d+):([1-4])$")
+    round=tonumber(round);choice=tonumber(choice)
+    if round~=KIP.round then return false end
+    local players=KIP_LivePlayers()
+    for _,team in ipairs(KIP.teams) do
+        if team.round==round and team.answerer==sender and team.human and team.status=="pending" and KIP.time<team.deadline then
+            local authorized=false
+            for _,p in ipairs(KIP_CurrentMembers(team,players)) do
+                if p.id==sender and Player_IsHuman(sender) then authorized=true end
+            end
+            if not authorized then return false end
+            team.selected=choice
+            return KIP_Resolve(team,choice==team.question.correct,"wrong",players)
+        end
+    end
+    return false
+end
+
+function KIP_Tick()
+    if not KIP.running then return end
+    KIP.time=KIP.time+1
+    local players=KIP_LivePlayers()
+    if KIP.time>=KIP.nextRound then
+        KIP_StartRound(players)
+        KIP.nextRound=KIP.time+KIP_CONFIG.interval
+    end
+    for _,team in ipairs(KIP.teams) do
+        if team.status=="pending" then
+            local members=KIP_CurrentMembers(team,players)
+            local present=false
+            for _,p in ipairs(members) do
+                if p.id==team.answerer and (not team.human or Player_IsHuman(p.id)) then present=true end
+            end
+            if #members==0 then
+                team.status="cancelled"
+            elseif team.human and not present then
+                local replacement=KIP_ChooseAnswerer(team,members)
+                if replacement then
+                    team.answerer=replacement.id
+                    KIP_AnnounceRound()
+                else
+                    team.status="cancelled";KIP_AnnounceResult(team)
+                end
+            end
+            if team.status=="pending" then
+                if not team.human and KIP.time>=team.aiAt then
+                    KIP_Resolve(team,team.aiCorrect,"wrong",players)
+                elseif KIP.time>=team.deadline then
+                    KIP_Resolve(team,false,"timeout",players)
+                end
+            end
+        end
+    end
+    KIP_RefreshUI()
+end
+
+function Knowledge_OnPlay()
+    KIP.running=KIP_CONFIG.general or KIP_CONFIG.christmas
+    if not KIP.running then return end
+    KIP.nextRound=KIP_CONFIG.interval
+    Network_RegisterEvent("KIP_AnswerNetwork")
+    KIP_CreateUI()
+    Rule_AddInterval(KIP_Tick,1)
+    print("Knowledge is Power initialized: 20-second answers, 180-second rounds")
+end
+
+function Knowledge_OnGameOver()
+    KIP.running=false
+    Rule_Remove(KIP_Tick)
+    KIP_RefreshUI()
+end
+
+function Knowledge_OnGameRestore()
+    if not KIP.running then return end
+    KIP_UI={created=false,open=false,assignment="",submitted=""}
+    Network_RegisterEvent("KIP_AnswerNetwork")
+    KIP_CreateUI()
+    if not Rule_Exists(KIP_Tick) then Rule_AddInterval(KIP_Tick,1) end
+end

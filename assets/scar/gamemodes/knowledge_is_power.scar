@@ -1,0 +1,2 @@
+import("ags_cardinal.scar")
+import("trivia/knowledge.scar")

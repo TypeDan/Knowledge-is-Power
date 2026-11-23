@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<DataWarehouse>
+	
+	<DataObject Name="Knowledge is Power" Type="Mod" Id="11831663724313788995" Version="1">
+		<DataProperty Name="m_description" Type="Object">
+			<DataValue Name="util::ReflectLocString">9342480213421213514</DataValue>
+			
+			<DataObject Name="" Type="util::ReflectLocString" Id="9342480213421213514" OwnerId="11831663724313788995">
+				<DataProperty Name="m_modPart2" Type="UInt32" Value="1132827056" />
+				<DataProperty Name="m_modPart3" Type="UInt32" Value="2479301058" />
+				<DataProperty Name="m_modPart0" Type="UInt32" Value="2617640944" />
+				<DataProperty Name="m_modPart1" Type="UInt32" Value="1162854478" />
+				<DataProperty Name="m_locStringKey" Type="Int32" Value="2" />
+			</DataObject>
+		</DataProperty>
+		<DataProperty Name="m_name" Type="Object">
+			<DataValue Name="util::ReflectLocString">13736714808127934321</DataValue>
+			
+			<DataObject Name="" Type="util::ReflectLocString" Id="13736714808127934321" OwnerId="11831663724313788995">
+				<DataProperty Name="m_modPart2" Type="UInt32" Value="1132827056" />
+				<DataProperty Name="m_modPart3" Type="UInt32" Value="2479301058" />
+				<DataProperty Name="m_modPart0" Type="UInt32" Value="2617640944" />
+				<DataProperty Name="m_modPart1" Type="UInt32" Value="1162854478" />
+				<DataProperty Name="m_locStringKey" Type="Int32" Value="1" />
+			</DataObject>
+		</DataProperty>
+	</DataObject>
+</DataWarehouse>

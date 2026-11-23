@@ -1,0 +1,138 @@
+-- Client presentation only. Never use these fields to decide simulation outcomes.
+KIP_UI={created=false,open=false,assignment="",submitted=""}
+function KIP_LocalTeam()
+    local player=Game_GetLocalPlayer()
+    for _,team in ipairs(KIP.teams) do
+        for _,id in ipairs(team.members) do if id==player then return team end end
+    end
+    return nil
+end
+function KIP_PlayerName(player)
+    local display=Player_GetDisplayName(player)
+    return (display and display.LocString) or ("Player "..Player_GetSlotIndex(player))
+end
+function KIP_Notify(key)
+    if UI_IsReplay() then return end
+    UI_CreateEventCue(KIP_LOC..key,Loc_Empty(),"medium_priority","","sfx_ui_event_queue_med_priority_play",ECV_Title,5)
+end
+function KIP_AnnounceRound()
+    if KIP_LocalTeam() then KIP_Notify(3005) end
+end
+function KIP_AnnounceResult(team)
+    if KIP_LocalTeam()~=team then return end
+    local keys={correct=3006,wrong=3007,timeout=3008,cancelled=3009}
+    KIP_Notify(keys[team.status] or 3009)
+end
+function KIP_UIToggle()
+    KIP_UI.open=not KIP_UI.open
+    KIP_RefreshUI()
+end
+function KIP_UIAnswer(message)
+    if type(message)~="string" or not string.match(message,"^%d+:[1-4]$") then return end
+    if KIP_UI.submitted~="" then return end
+    KIP_UI.submitted=message
+    Network_CallEvent("KIP_AnswerNetwork",message)
+    KIP_RefreshUI()
+end
+function KIP_RefreshUI()
+    if not KIP_UI.created then return end
+    local player=Game_GetLocalPlayer()
+    local team=KIP_LocalTeam()
+    local slot=Player_GetSlotIndex(player)
+    local assignment=team and (team.round..":"..Player_GetSlotIndex(team.answerer)) or ""
+    local isAnswerer=team~=nil and team.answerer==player and team.human
+    if assignment~=KIP_UI.assignment then
+        KIP_UI.assignment=assignment;KIP_UI.submitted=""
+        if isAnswerer and team.status=="pending" then KIP_UI.open=true end
+    end
+    local active=KIP.running and team~=nil and team.status=="pending"
+    local canAnswer=active and isAnswerer and KIP_UI.submitted==""
+    local data={toggle=KIP_UI.toggle,answer=KIP_UI.answer,
+        rootVisibility=KIP.running and "Visible" or "Collapsed",
+        visibility=KIP_UI.open and "Visible" or "Collapsed",
+        questionVisibility=active and isAnswerer and "Visible" or "Collapsed",
+        enabled=canAnswer,title="Knowledge is Power",question="",answers={},payloads={},
+        timer="Next question in "..math.max(0,KIP.nextRound-KIP.time).."s",
+        status="One teammate answers for the team.",stakes="",result="",resultVisibility="Collapsed"}
+    if team then
+        if active then
+            data.timer=math.max(0,team.deadline-KIP.time).." seconds remaining"
+            data.status=isAnswerer and "Your turn to answer." or (KIP_PlayerName(team.answerer).." is answering for your team.")
+            if KIP_UI.submitted~="" and isAnswerer then data.status="Answer submitted..." end
+            data.stakes="Correct: "..team.prize.." of EACH resource, split across the team.\nWrong: you pay "..(team.costs[slot] or 0).." of each, or lose 10% of your villagers if you cannot pay."
+            if isAnswerer then
+                data.question=team.question.text
+                for i,letter in ipairs({"A","B","C","D"}) do
+                    data.answers[letter]=letter.."  "..team.question.options[i]
+                    data.payloads[letter]=team.round..":"..i
+                end
+            end
+        else
+            local effect=team.effects[slot]
+            if team.status=="correct" then
+                data.status="Correct answer!"
+                data.result="You received "..(effect and effect.won or 0).." of each resource."
+            elseif team.status=="cancelled" then
+                data.status="Round cancelled."
+                data.result="No eligible answerer. No reward or penalty."
+            else
+                data.status=team.status=="timeout" and "Time ran out." or "Incorrect answer."
+                if effect and effect.lost and effect.lost>0 then
+                    data.result="You lost "..effect.lost.." villager"..(effect.lost==1 and "." or "s.")
+                elseif effect and effect.paid and effect.paid>0 then
+                    data.result="You paid "..effect.paid.." of each resource."
+                else data.result="No resources charged; no villagers available." end
+            end
+            if team.status~="cancelled" then
+                data.result=data.result.."\nAnswer: "..team.question.options[team.question.correct]
+            end
+            data.resultVisibility="Visible"
+        end
+    end
+    UI_SetDataContext("KnowledgeTrivia",data)
+end
+
+function KIP_CreateUI()
+    if UI_IsReplay() then return end
+    local xaml=[[<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="18,210,0,0" Visibility="{Binding [rootVisibility]}">
+    <Grid.Resources>
+    <Style x:Key="KnowledgeButton" TargetType="Button">
+    <Setter Property="OverridesDefaultStyle" Value="True"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Foreground" Value="#FFFFDF88"/>
+    <Setter Property="Background" Value="#FF182C39"/>
+    <Setter Property="BorderBrush" Value="#FF77623A"/>
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" Padding="{TemplateBinding Padding}">
+    <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+    </Border><ControlTemplate.Triggers>
+    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FFFFD77E"/></Trigger>
+    <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#FF42677A"/></Trigger>
+    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.5"/></Trigger>
+    </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style></Grid.Resources>
+    <StackPanel Width="272">
+    <Button Content="Trivia" Command="{Binding [toggle]}" HorizontalAlignment="Left" Margin="0,0,0,4" Style="{StaticResource KnowledgeButton}"/>
+    <Border Visibility="{Binding [visibility]}" Background="#F014201C" BorderBrush="#FF77623A" BorderThickness="1" Padding="8">
+    <StackPanel>
+    <TextBlock Text="{Binding [title]}" FontSize="16" FontWeight="Bold" Foreground="#FFFFDF88" Margin="0,0,0,6"/>
+    <TextBlock Text="{Binding [timer]}" FontSize="13" Foreground="#FFFFDF88" Margin="0,0,0,6"/>
+    <ScrollViewer MaxHeight="370" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
+    <TextBlock Text="{Binding [status]}" TextWrapping="Wrap" FontSize="13" Foreground="White" Margin="0,0,0,8"/>
+    <StackPanel Visibility="{Binding [questionVisibility]}">
+    <TextBlock Text="{Binding [question]}" TextWrapping="Wrap" FontSize="15" Foreground="White" Margin="0,0,0,6"/>]]
+    for _,letter in ipairs({"A","B","C","D"}) do
+        xaml=xaml..'<Button Command="{Binding [answer]}" CommandParameter="{Binding [payloads]['..letter..']}" IsEnabled="{Binding [enabled]}" Margin="0,4,0,0" Style="{StaticResource KnowledgeButton}"><TextBlock Text="{Binding [answers]['..letter..']}" TextWrapping="Wrap"/></Button>'
+    end
+    xaml=xaml..[[</StackPanel>
+    <TextBlock Text="{Binding [stakes]}" TextWrapping="Wrap" Foreground="#FFB9C6BC" FontSize="12" Margin="0,10,0,0"/>
+    <TextBlock Text="{Binding [result]}" Visibility="{Binding [resultVisibility]}" TextWrapping="Wrap" Foreground="#FFFFDF88" FontSize="13" Margin="0,4,0,0"/>
+    </StackPanel></ScrollViewer></StackPanel></Border></StackPanel></Grid>]]
+    KIP_UI.toggle=UI_CreateCommand("KIP_UIToggle")
+    KIP_UI.answer=UI_CreateCommand("KIP_UIAnswer")
+    UI_AddChild("ScarNotReplay","XamlPresenter","KnowledgeTrivia",{IsHitTestVisible=true,Xaml=xaml,
+        DataContext=UI_CreateDataContext({visibility="Collapsed",rootVisibility="Visible",toggle=KIP_UI.toggle,answer=KIP_UI.answer})})
+    KIP_UI.created=true
+    KIP_RefreshUI()
+end
