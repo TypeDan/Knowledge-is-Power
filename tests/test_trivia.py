@@ -163,22 +163,79 @@ end
 reset();Knowledge_SetupSettings({section_knowledge_trivia={general_questions=false,christmas_questions=false}})
 assert(KIP_NextQuestion()==nil);Knowledge_OnPlay();assert(not KIP.running)
 
--- UI privacy/authority: only assigned human sees answers; refresh never consumes RNG.
+-- Suggestions are per sender, scoped to their team, and cannot settle a round.
+reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+local helper=team.answerer==12 and 41 or 12
+local before=randomCalls
+assert(KIP_SuggestNetwork(helper,'1:2'))
+assert(team.suggestions[Player_GetSlotIndex(helper)]==2 and team.status=='pending')
+assert(resources[12][1]==1000 and resources[41][1]==1000 and randomCalls==before)
+assert(KIP.teams[2].suggestions[Player_GetSlotIndex(helper)]==nil)
+assert(not KIP_SuggestNetwork(helper,'1:2'))
+assert(KIP_SuggestNetwork(helper,'1:4')) -- Advice may change until the final answer.
+assert(team.suggestions[Player_GetSlotIndex(helper)]==4)
+assert(not KIP_SuggestNetwork(team.answerer,'1:1'))
+assert(not KIP_SuggestNetwork(18,'1:1')) -- An AI cannot impersonate a human helper.
+assert(not KIP_SuggestNetwork(999,'1:1'))
+for _,bad in ipairs({'0:1','2:1','1:0','1:5','1:1:1','1:1x','-1:1','1:2.0',string.rep('1',40)}) do
+    assert(not KIP_SuggestNetwork(helper,bad))
+end
+assert(not KIP_SuggestNetwork(helper,{}))
+find(helper).isEliminated=true;assert(not KIP_SuggestNetwork(helper,'1:3'))
+find(helper).isEliminated=false
+local oldTeam=find(helper).team;find(helper).team=99
+assert(not KIP_SuggestNetwork(helper,'1:3'));find(helper).team=oldTeam
+KIP.time=team.deadline;assert(not KIP_SuggestNetwork(helper,'1:3'));KIP.time=0
+assert(KIP_AnswerNetwork(team.answerer,'1:'..team.question.correct))
+assert(not KIP_SuggestNetwork(helper,'1:3'))
+KIP_StartRound(KIP_LivePlayers());assert(next(KIP.teams[1].suggestions)==nil)
+assert(not KIP_SuggestNetwork(helper,'1:3'))
+
+-- If a helper takes over, their old advice is not a final answer.
+reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
+helper=team.answerer==12 and 41 or 12
+assert(KIP_SuggestNetwork(helper,'1:2'))
+find(team.answerer).isEliminated=true;KIP_Tick()
+assert(team.answerer==helper and team.suggestions[Player_GetSlotIndex(helper)]==nil)
+assert(team.status=='pending' and team.deadline==20)
+
+-- UI: everyone on the team sees the question; only the answerer submits it.
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
 localPlayer=team.answerer;KIP_CreateUI()
 assert(context.question==team.question.text and context.questionVisibility=='Visible' and context.enabled)
 assert(context.visibility=='Visible' and context.payloads.A=='1:1')
-local before=randomCalls;KIP_RefreshUI();assert(randomCalls==before)
+before=randomCalls;KIP_RefreshUI();assert(randomCalls==before)
 localPlayer=team.answerer==12 and 41 or 12;KIP_RefreshUI()
-assert(context.question=='' and context.questionVisibility=='Collapsed' and not context.enabled)
-assert(context.answers.A==nil)
+helper=localPlayer
+assert(context.question==team.question.text and context.questionVisibility=='Visible' and context.enabled)
+assert(context.answers.A and context.visibility=='Visible')
+KIP_UIAnswer(context.payloads.B)
+assert(lastNetwork[1]=='KIP_SuggestNetwork' and lastNetwork[2]=='1:2' and KIP_UI.submitted=='')
+assert(KIP_SuggestNetwork(helper,lastNetwork[2]))
+assert(context.backgrounds.B=='#FF426744' and context.backgrounds.A=='#FF182C39')
+assert(string.find(context.suggestions,'Name '..helper..': B',1,true))
+KIP_UIAnswer(context.payloads.D);assert(KIP_SuggestNetwork(helper,lastNetwork[2]))
+assert(context.backgrounds.D=='#FF426744' and context.backgrounds.B=='#FF182C39')
+localPlayer=team.answerer;KIP_RefreshUI()
+assert(string.find(context.suggestions,'Name '..helper..': D',1,true))
+assert(context.enabled and context.backgrounds.D=='#FF182C39')
+localPlayer=73;KIP_RefreshUI()
+assert(not string.find(context.suggestions,'Name '..helper,1,true)) -- Opposing team cannot see suggestions.
+localPlayer=helper;find(helper).isEliminated=true;KIP_RefreshUI()
+assert(not context.enabled);lastNetwork=nil;KIP_UIAnswer('1:1');assert(lastNetwork==nil)
+find(helper).isEliminated=false
+-- A restored older save with no suggestion table still renders.
+team.suggestions=nil;KIP_RefreshUI();assert(context.suggestionsVisibility=='Visible')
 localPlayer=team.answerer;KIP_RefreshUI();KIP_UIAnswer(context.payloads.A)
 assert(lastNetwork[1]=='KIP_AnswerNetwork' and lastNetwork[2]=='1:1' and not context.enabled)
 -- Native player handles are opaque objects, not numbers or concatenable text.
 local handle={};local oldAnswerer=team.answerer
 for i,id in ipairs(team.members) do if id==oldAnswerer then team.members[i]=handle end end
+find(oldAnswerer).id=handle
 team.answerer=handle;localPlayer=handle
-Player_GetSlotIndex=function(id) assert(id==handle);return 1 end
+local originalGetSlot=Player_GetSlotIndex
+Player_GetSlotIndex=function(id) if id==handle then return 1 end return originalGetSlot(id) end
+Player_GetDisplayName=function(id) return {LocString=id==handle and 'Opaque player' or ('Name '..id)} end
 KIP_RefreshUI()
 assert(KIP_UI.assignment=='1:1' and context.questionVisibility=='Visible')
 -- UI receives a player wrapper separately from Core; slot keys bridge them.
@@ -188,4 +245,4 @@ team.status='correct';team.effects[1]={won=150};KIP_RefreshUI()
 assert(string.find(context.result,'You received 150 of each resource.',1,true))
 ''')
 ET.fromstring(lua.globals().xaml)
-print('PASS: timing, network authority, mixed-age team pot, exact penalties, 10% casualties, AI odds, no-repeat questions, rotation, UI privacy and XAML.')
+print('PASS: timing, answer/suggestion authority, mixed-age team pot, exact penalties, 10% casualties, AI odds, no-repeat questions, rotation, teammate advice, UI privacy and XAML.')

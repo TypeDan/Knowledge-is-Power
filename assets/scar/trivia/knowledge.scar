@@ -106,7 +106,7 @@ function KIP_StartRound(players)
         local answerer=chosen or group.members[1]
         local entry={key=group.key,round=KIP.round,members={},costs={},question=question,
             answerer=answerer.id,human=chosen~=nil,deadline=KIP.time+KIP_CONFIG.answerSeconds,
-            prize=KIP_CONFIG.rewards[KIP_Age(answerer.id)],status="pending",effects={}}
+            prize=KIP_CONFIG.rewards[KIP_Age(answerer.id)],status="pending",effects={},suggestions={}}
         for _,p in ipairs(group.members) do
             table.insert(entry.members,p.id)
             entry.costs[Player_GetSlotIndex(p.id)]=math.floor(KIP_CONFIG.rewards[KIP_Age(p.id)]/3)
@@ -206,6 +206,31 @@ function KIP_AnswerNetwork(sender,message)
     return false
 end
 
+-- Advice is synchronized separately from the answer. The sender can only change
+-- their own suggestion on their own team's active question; it never settles it.
+function KIP_SuggestNetwork(sender,message)
+    if not KIP.running or type(message)~="string" or #message>32 then return false end
+    local round,choice=string.match(message,"^(%d+):([1-4])$")
+    round=tonumber(round);choice=tonumber(choice)
+    if round~=KIP.round then return false end
+    local players=KIP_LivePlayers()
+    for _,team in ipairs(KIP.teams) do
+        if team.round==round and team.human and team.answerer~=sender and team.status=="pending" and KIP.time<team.deadline then
+            for _,p in ipairs(KIP_CurrentMembers(team,players)) do
+                if p.id==sender and Player_IsHuman(sender) then
+                    local slot=Player_GetSlotIndex(sender)
+                    team.suggestions=team.suggestions or {}
+                    if team.suggestions[slot]==choice then return false end
+                    team.suggestions[slot]=choice
+                    KIP_RefreshUI()
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 function KIP_Tick()
     if not KIP.running then return end
     KIP.time=KIP.time+1
@@ -227,6 +252,7 @@ function KIP_Tick()
                 local replacement=KIP_ChooseAnswerer(team,members)
                 if replacement then
                     team.answerer=replacement.id
+                    if team.suggestions then team.suggestions[Player_GetSlotIndex(replacement.id)]=nil end
                     KIP_AnnounceRound()
                 else
                     team.status="cancelled";KIP_AnnounceResult(team)
@@ -249,6 +275,7 @@ function Knowledge_OnPlay()
     if not KIP.running then return end
     KIP.nextRound=KIP_CONFIG.interval
     Network_RegisterEvent("KIP_AnswerNetwork")
+    Network_RegisterEvent("KIP_SuggestNetwork")
     KIP_CreateUI()
     Rule_AddInterval(KIP_Tick,1)
     print("Knowledge is Power initialized: 20-second answers, 180-second rounds")
@@ -264,6 +291,7 @@ function Knowledge_OnGameRestore()
     if not KIP.running then return end
     KIP_UI={created=false,open=false,assignment="",submitted=""}
     Network_RegisterEvent("KIP_AnswerNetwork")
+    Network_RegisterEvent("KIP_SuggestNetwork")
     KIP_CreateUI()
     if not Rule_Exists(KIP_Tick) then Rule_AddInterval(KIP_Tick,1) end
 end

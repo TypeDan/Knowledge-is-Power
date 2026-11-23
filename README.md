@@ -1,12 +1,12 @@
 # Knowledge is Power
 
-Version **2026.11.23.1**. An Age of Empires IV game mode combining team trivia with More Advanced Game Settings. Select **Knowledge is Power as Game Mode**. No tuning pack is required.
+Version **2026.11.23.2**. An Age of Empires IV game mode combining team trivia with More Advanced Game Settings. Select **Knowledge is Power as Game Mode**. No tuning pack is required.
 
-[Subscribe in the AoE IV mod catalogue](https://www.ageofempires.com/mods/details/594033/) · [Download the release](https://github.com/TypeDan/Knowledge-is-Power/releases/tag/v2026.11.23.1). Published as **TypeEkcyall**. The installed catalogue copy matches the tested release archive exactly.
+[Subscribe in the AoE IV mod catalogue](https://www.ageofempires.com/mods/details/594034/) · [Download the release](https://github.com/TypeDan/Knowledge-is-Power/releases/tag/v2026.11.23.2). Published as **TypeEkcyall**. AoE created a replacement listing for this release despite retaining the project GUID; subscribers to 594033 need the new link. See VALIDATION.md for build and publication verification.
 
 ![Knowledge is Power](assets/mod.png)
 
-Every **three game minutes**, a centre-screen announcement introduces a trivia round. Each team chooses one human player, randomly among those with the fewest turns. That player has **20 game seconds** to click A, B, C or D in a compact menu matching Yuletide's 272-pixel panel. Their teammates see who is answering. Teams containing only AI players answer automatically, with a **50% chance of success**.
+Every **three game minutes**, a centre-screen announcement introduces a trivia round. Each team chooses one human player, randomly among those with the fewest turns. That player has **20 game seconds** to click A, B, C or D in a compact menu matching Yuletide's 272-pixel panel. All human teammates see the question and can click A, B, C or D to suggest an answer. The panel opens for everyone on the team and shows each teammate's name and current suggestion. Suggestions can be changed until the chosen player submits or the 20 seconds expire. Only the chosen player submits the final answer; advice never awards resources or causes a penalty. Other teams cannot see these suggestions. Teams containing only AI players answer automatically, with a **50% chance of success**.
 
 The lobby has separate **General questions** and **Christmas questions** switches. Both are on by default. Enable either or both; turn both off to play without trivia. There are **289 original multiple-choice questions: 209 general and 80 Christmas**. Each match shuffles the enabled bank using the game's synchronized random generator. Questions do not repeat until that bank is exhausted; even across reshuffles, the same question cannot appear twice in a row. Answers are shuffled too. No online trivia service or external connection is needed during play.
 

@@ -1,4 +1,18 @@
-# Release validation: 2026.11.23.1
+# Release validation: 2026.11.23.2
+
+All four automated suites below pass with the teammate advice changes. Additional actual-Lua checks cover sending and changing suggestions, invalid senders and payloads, opposing teams, expired rounds, eliminated players, reassignment, old save data without suggestions, reset between rounds, and UI command routing. Suggestions do not resolve the question, consume RNG, or change resources. Only the assigned answerer can submit the final answer.
+
+The Content Editor compiled this version with zero errors and warnings. Archive verification checks all 103 SCAR scripts against source and all five compiled localization descriptions against VERSION. Diagnostic markers are rejected.
+
+Native checks on 23 November 2026 used the same game build listed below. An isolated diagnostic archive treated the English human and a Delhi AI as trivia teammates and alternated the human between helper and answerer roles. The native menu displayed the question and four options to the helper, automatically opened, sent a clicked suggestion through the native network event, highlighted A, and displayed `TypeEkcyall: A`. A resource snapshot confirmed the suggestion left the question pending and charged nothing. In the answerer role the panel displayed the simulated teammate's name and B suggestion. Subsequent rounds cleared the previous advice. Unanswered questions applied the timeout penalty and displayed the correct answer. Text wrapped without clipping at the tested UI scale.
+
+This role simulation is a single-PC UI check, not a multi-client multiplayer test. Changing advice and final-answer routing pass the automated Lua tests; final-answer clicks during this native advice session missed the deadline, so they are not counted as successful submission checks. The previous release's successful native answer/reward checks are retained below for context.
+
+The diagnostic archive was removed from the active installation after testing. Release SHA-256: `B0004E224384BF05C3BD7747814B36A88256C0EF519B99280722A25FB340A146`.
+
+Publication completed on 23 November 2026 as listing **594034**, author **TypeEkcyall**, description version **2026.11.23.2**. The automatically installed store download matches the clean release archive byte-for-byte. Despite the unchanged project GUID, the native publisher created a replacement listing rather than updating 594033. The old installed version and local development copy are disabled; the latest published copy is enabled. The website rejected an attempt to unlist the old version because its edit form does not offer AoE IV as a game selection. The old listing remains pending the owner's decision about permanent removal.
+
+## Previous release validation: 2026.11.23.1
 
 ## Automated checks
 

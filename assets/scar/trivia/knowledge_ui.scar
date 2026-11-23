@@ -29,9 +29,22 @@ function KIP_UIToggle()
 end
 function KIP_UIAnswer(message)
     if type(message)~="string" or not string.match(message,"^%d+:[1-4]$") then return end
-    if KIP_UI.submitted~="" then return end
-    KIP_UI.submitted=message
-    Network_CallEvent("KIP_AnswerNetwork",message)
+    local team=KIP_LocalTeam()
+    local player=Game_GetLocalPlayer()
+    if not KIP.running or not team or not team.human or team.status~="pending" or KIP.time>=team.deadline then return end
+    if tonumber(string.match(message,"^(%d+):"))~=team.round then return end
+    local eligible=false
+    for _,p in ipairs(KIP_CurrentMembers(team,KIP_LivePlayers())) do
+        if p.id==player and Player_IsHuman(player) then eligible=true end
+    end
+    if not eligible then return end
+    if team.answerer==player then
+        if KIP_UI.submitted~="" then return end
+        KIP_UI.submitted=message
+        Network_CallEvent("KIP_AnswerNetwork",message)
+    else
+        Network_CallEvent("KIP_SuggestNetwork",message)
+    end
     KIP_RefreshUI()
 end
 function KIP_RefreshUI()
@@ -41,31 +54,51 @@ function KIP_RefreshUI()
     local slot=Player_GetSlotIndex(player)
     local assignment=team and (team.round..":"..Player_GetSlotIndex(team.answerer)) or ""
     local isAnswerer=team~=nil and team.answerer==player and team.human
+    local members=team and KIP_CurrentMembers(team,KIP_LivePlayers()) or {}
+    local eligible=false
+    for _,p in ipairs(members) do
+        if p.id==player and Player_IsHuman(player) then eligible=true end
+    end
     if assignment~=KIP_UI.assignment then
         KIP_UI.assignment=assignment;KIP_UI.submitted=""
-        if isAnswerer and team.status=="pending" then KIP_UI.open=true end
+        if eligible and team.human and team.status=="pending" then KIP_UI.open=true end
     end
     local active=KIP.running and team~=nil and team.status=="pending"
-    local canAnswer=active and isAnswerer and KIP_UI.submitted==""
+    local canChoose=active and team.human and eligible and KIP.time<team.deadline and (not isAnswerer or KIP_UI.submitted=="")
     local data={toggle=KIP_UI.toggle,answer=KIP_UI.answer,
         rootVisibility=KIP.running and "Visible" or "Collapsed",
         visibility=KIP_UI.open and "Visible" or "Collapsed",
-        questionVisibility=active and isAnswerer and "Visible" or "Collapsed",
-        enabled=canAnswer,title="Knowledge is Power",question="",answers={},payloads={},
+        questionVisibility=active and "Visible" or "Collapsed",
+        enabled=canChoose,title="Knowledge is Power",question="",answers={},payloads={},backgrounds={},
+        suggestions="",suggestionsVisibility="Collapsed",
         timer="Next question in "..math.max(0,KIP.nextRound-KIP.time).."s",
         status="One teammate answers for the team.",stakes="",result="",resultVisibility="Collapsed"}
     if team then
         if active then
             data.timer=math.max(0,team.deadline-KIP.time).." seconds remaining"
-            data.status=isAnswerer and "Your turn to answer." or (KIP_PlayerName(team.answerer).." is answering for your team.")
+            data.status=isAnswerer and "Your turn. Choose the team's final answer." or (KIP_PlayerName(team.answerer).." is answering. Choose a suggestion below.")
             if KIP_UI.submitted~="" and isAnswerer then data.status="Answer submitted..." end
+            if not eligible then data.status=KIP_PlayerName(team.answerer).." is answering for your team." end
             data.stakes="Correct: "..team.prize.." of EACH resource, split across the team.\nWrong: you pay "..(team.costs[slot] or 0).." of each, or lose 10% of your villagers if you cannot pay."
-            if isAnswerer then
-                data.question=team.question.text
-                for i,letter in ipairs({"A","B","C","D"}) do
-                    data.answers[letter]=letter.."  "..team.question.options[i]
-                    data.payloads[letter]=team.round..":"..i
+            data.question=team.question.text
+            local letters={"A","B","C","D"}
+            local suggestions=team.suggestions or {}
+            for i,letter in ipairs(letters) do
+                data.answers[letter]=letter.."  "..team.question.options[i]
+                data.payloads[letter]=team.round..":"..i
+                data.backgrounds[letter]=(not isAnswerer and suggestions[slot]==i) and "#FF426744" or "#FF182C39"
+            end
+            local lines={}
+            for _,p in ipairs(members) do
+                if p.id~=team.answerer and Player_IsHuman(p.id) then
+                    local choice=suggestions[Player_GetSlotIndex(p.id)]
+                    table.insert(lines,KIP_PlayerName(p.id)..": "..(letters[choice] or "waiting"))
                 end
+            end
+            if #lines>0 then
+                data.suggestions="Team suggestions\n"..table.concat(lines,"\n")
+                if not isAnswerer and eligible then data.suggestions=data.suggestions.."\nYou can change your suggestion." end
+                data.suggestionsVisibility="Visible"
             end
         else
             local effect=team.effects[slot]
@@ -123,9 +156,10 @@ function KIP_CreateUI()
     <StackPanel Visibility="{Binding [questionVisibility]}">
     <TextBlock Text="{Binding [question]}" TextWrapping="Wrap" FontSize="15" Foreground="White" Margin="0,0,0,6"/>]]
     for _,letter in ipairs({"A","B","C","D"}) do
-        xaml=xaml..'<Button Command="{Binding [answer]}" CommandParameter="{Binding [payloads]['..letter..']}" IsEnabled="{Binding [enabled]}" Margin="0,4,0,0" Style="{StaticResource KnowledgeButton}"><TextBlock Text="{Binding [answers]['..letter..']}" TextWrapping="Wrap"/></Button>'
+        xaml=xaml..'<Button Command="{Binding [answer]}" CommandParameter="{Binding [payloads]['..letter..']}" IsEnabled="{Binding [enabled]}" Background="{Binding [backgrounds]['..letter..']}" Margin="0,4,0,0" Style="{StaticResource KnowledgeButton}"><TextBlock Text="{Binding [answers]['..letter..']}" TextWrapping="Wrap"/></Button>'
     end
     xaml=xaml..[[</StackPanel>
+    <TextBlock Text="{Binding [suggestions]}" Visibility="{Binding [suggestionsVisibility]}" TextWrapping="Wrap" Foreground="#FFFFDF88" FontSize="12" Margin="0,8,0,0"/>
     <TextBlock Text="{Binding [stakes]}" TextWrapping="Wrap" Foreground="#FFB9C6BC" FontSize="12" Margin="0,10,0,0"/>
     <TextBlock Text="{Binding [result]}" Visibility="{Binding [resultVisibility]}" TextWrapping="Wrap" Foreground="#FFFFDF88" FontSize="13" Margin="0,4,0,0"/>
     </StackPanel></ScrollViewer></StackPanel></Border></StackPanel></Grid>]]
