@@ -25,4 +25,6 @@ A second skirmish ran the unmodified release archive at normal timing: England v
 
 Release SHA-256: `5BFAADECF6EFE18A103DB34714F55E5771CEF19FD7C67ED87E6B990E383F8FDC`.
 
+Publication verified in the in-game catalogue on 23 November 2026: listing **594033**, author **TypeEkcyall**, description version **2026.11.23.1**. The automatically installed subscribed archive has the same SHA-256 as the tested build and GitHub release asset. A name search returned one listing.
+
 These are single-PC skirmish checks. Multiple human clients and native save/load are not verified.

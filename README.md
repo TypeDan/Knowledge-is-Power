@@ -2,6 +2,8 @@
 
 Version **2026.11.23.1**. An Age of Empires IV game mode combining team trivia with More Advanced Game Settings. Select **Knowledge is Power as Game Mode**. No tuning pack is required.
 
+[Subscribe in the AoE IV mod catalogue](https://www.ageofempires.com/mods/details/594033/) · [Download the release](https://github.com/TypeDan/Knowledge-is-Power/releases/tag/v2026.11.23.1). Published as **TypeEkcyall**. The installed catalogue copy matches the tested release archive exactly.
+
 ![Knowledge is Power](assets/mod.png)
 
 Every **three game minutes**, a centre-screen announcement introduces a trivia round. Each team chooses one human player, randomly among those with the fewest turns. That player has **20 game seconds** to click A, B, C or D in a compact menu matching Yuletide's 272-pixel panel. Their teammates see who is answering. Teams containing only AI players answer automatically, with a **50% chance of success**.
