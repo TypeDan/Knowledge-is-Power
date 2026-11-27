@@ -97,7 +97,7 @@ function KIP_RefreshUI()
             data.status=isAnswerer and "Your turn. Choose the team's final answer." or (KIP_PlayerName(team.answerer).." is answering. Choose a suggestion below.")
             if KIP_UI.submitted~="" and isAnswerer then data.status=KIP_UI.submitted=="pass" and "Using team pass..." or "Answer submitted..." end
             if not eligible then data.status=KIP_PlayerName(team.answerer).." is answering for your team." end
-            data.stakes="Correct: "..team.prize.." of EACH resource, split across the team.\nWrong: you pay "..(team.costs[slot] or 0).." of each, or lose 10% of your villagers if you cannot pay."
+            data.stakes="Correct: "..team.prize.." of EACH resource, split across the team.\nWrong: you pay "..(team.costs[slot] or 0).." of each, or lose 15% of your villagers if you cannot pay."
             data.question=team.question.text
             local letters={"A","B","C","D"}
             local suggestions=team.suggestions or {}

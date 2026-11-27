@@ -3,7 +3,7 @@ import("trivia/knowledge_ui.scar")
 Core_RegisterModule("Knowledge")
 
 KIP_LOC = "$9c0607f0c04e454fb0918543c221c793:"
-KIP_CONFIG = {interval=180, answerSeconds=20, rewards={300,450,600,900}, general=true, christmas=true}
+KIP_CONFIG = {interval=180, answerSeconds=20, rewards={450,675,900,1350}, general=true, christmas=true}
 KIP = {running=false,time=0,round=0,nextRound=180,teams={},turns={},passesUsed={},deck={},deckIndex=1}
 
 function Knowledge_SetupSettings(options)
@@ -98,18 +98,25 @@ function KIP_ChooseAnswerer(team,players)
 end
 
 function KIP_StartRound(players)
-    local question=KIP_NextQuestion()
-    if not question then return end
     KIP.round=KIP.round+1;KIP.teams={}
+    local used={}
     for _,group in ipairs(KIP_GroupPlayers(players)) do
+        local question=KIP_NextQuestion()
+        if not question then return end
+        -- A deck reshuffle between teams must not duplicate a question this round.
+        local attempts=0
+        while used[question.id] and attempts<#KIP_QUESTIONS do
+            question=KIP_NextQuestion();attempts=attempts+1
+        end
+        used[question.id]=true
         local chosen=KIP_ChooseAnswerer(group,group.members)
         local answerer=chosen or group.members[1]
         local entry={key=group.key,round=KIP.round,members={},costs={},question=question,
             answerer=answerer.id,human=chosen~=nil,deadline=KIP.time+KIP_CONFIG.answerSeconds,
             prize=KIP_CONFIG.rewards[KIP_Age(answerer.id)],status="pending",effects={},suggestions={}}
-        -- One team bill, one-third of the displayed prize. Freeze each share
+        -- One team bill, half of the displayed prize (rounded down). Freeze each share
         -- when the round opens, including rotating any indivisible remainder.
-        entry.penalty=math.floor(entry.prize/3)
+        entry.penalty=math.floor(entry.prize/2)
         local share=math.floor(entry.penalty/#group.members)
         local remainder=entry.penalty-share*#group.members
         for i,p in ipairs(group.members) do
@@ -159,10 +166,10 @@ function KIP_ApplyPenalty(player,cost)
         for _,resource in ipairs({RT_Food,RT_Wood,RT_Gold,RT_Stone}) do Player_AddResource(player,resource,-cost) end
         return {paid=cost,lost=0}
     end
-    -- An unaffordable bill is replaced by one 10% loss, never four losses.
-    -- No partial debit; rounding up means 1-10 living villagers lose one.
+    -- An unaffordable bill is replaced by one 15% loss, never four losses.
+    -- No partial debit; rounding up means 1-6 living villagers lose one.
     local villagers=KIP_PlayerVillagers(player)
-    local count=math.ceil(#villagers/10)
+    local count=math.ceil(#villagers*15/100)
     for i=1,count do Entity_Kill(villagers[i].entity) end
     return {paid=0,lost=count}
 end

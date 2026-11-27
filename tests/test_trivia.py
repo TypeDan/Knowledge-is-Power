@@ -62,8 +62,9 @@ assert(KIP.round==0)
 KIP_Tick();assert(KIP.round==1 and KIP.nextRound==360 and #KIP.teams==2)
 local team=KIP.teams[1]
 assert(team.members[1]==12 and team.members[2]==41 and team.deadline==200)
+assert(KIP.teams[1].question.id~=KIP.teams[2].question.id)
 assert(KIP.teams[2].answerer==73) -- AI teammates never take a human's turn.
-assert(team.costs[1]+team.costs[3]==team.prize/3)
+assert(team.costs[1]+team.costs[3]==math.floor(team.prize/2))
 assert(math.abs(team.costs[1]-team.costs[3])<=1)
 local expected=team.prize
 local correct=team.question.correct
@@ -82,7 +83,7 @@ for resource=1,4 do
 end
 assert(resources[73][1]==1000 and resources[18][1]==1000)
 
--- Wrong: the frozen share of the team bill or 10% villagers, no partial bill.
+-- Wrong: the frozen share of the team bill or 15% villagers, no partial bill.
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
 local insufficient=team.costs[3]-1
 resources[41]={1000,insufficient,1000,1000}
@@ -93,20 +94,20 @@ local wrong=team.question.correct%4+1
 assert(KIP_AnswerNetwork(team.answerer,'1:'..wrong))
 for r=1,4 do assert(resources[12][r]==1000-team.costs[1]) end
 assert(resources[41][1]==1000 and resources[41][2]==insufficient)
-assert(#KIP_PlayerVillagers(41)==31 and team.effects[3].lost==4)
+assert(#KIP_PlayerVillagers(41)==29 and team.effects[3].lost==6)
 assert(not entities[41][36].dead) -- Trader is never a villager casualty.
 for _,count in ipairs({0,1,6,10,11,20,35,40,101}) do
     entities[41]={}
     for i=1,count do table.insert(entities[41],{id=i,kind='villager'}) end
     local effect=KIP_ApplyPenalty(41,150)
-    assert(effect.lost==math.ceil(count/10) and #KIP_PlayerVillagers(41)==count-math.ceil(count/10))
+    assert(effect.lost==math.ceil(count*15/100) and #KIP_PlayerVillagers(41)==count-math.ceil(count*15/100))
 end
 
--- Every age has a team bill exactly one-third of the prize.
-for age,amount in ipairs({300,450,600,900}) do
+-- Every age has a team bill exactly half (rounded down) of the prize.
+for age,amount in ipairs({450,675,900,1350}) do
     reset();players[1].age=age;players[2].age=age;KIP_StartRound(KIP_LivePlayers())
     assert(KIP.teams[1].prize==amount)
-    assert(KIP.teams[1].costs[1]+KIP.teams[1].costs[3]==amount/3)
+    assert(KIP.teams[1].costs[1]+KIP.teams[1].costs[3]==math.floor(amount/2))
 end
 players[1].age=2;players[2].age=1
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
@@ -153,12 +154,13 @@ assert(successes==50);World_GetRand=actualRng;players[3].human=true
 -- Unequal team sizes have equal total prizes and bills at every age.
 local originalPlayers=players
 for _,size in ipairs({2,3,4}) do
-    for age,prize in ipairs({300,450,600,900}) do
+    for age,prize in ipairs({450,675,900,1350}) do
         players={}
         for i=1,size+2 do
             table.insert(players,{id=i*11,slot=i,team=i<=size and 1 or 2,age=age,human=true})
         end
         reset()
+        for _,p in ipairs(players) do resources[p.id]={10000,10000,10000,10000} end
         local totalPaid={}
         for round=1,size do
             KIP_StartRound(KIP_LivePlayers())
@@ -168,11 +170,11 @@ for _,size in ipairs({2,3,4}) do
                     local cost=entry.costs[Player_GetSlotIndex(id)]
                     bill=bill+cost;totalPaid[id]=(totalPaid[id] or 0)+cost
                 end
-                assert(bill==prize/3 and entry.prize==prize)
+                assert(bill==math.floor(prize/2) and entry.prize==prize)
                 assert(KIP_AnswerNetwork(entry.answerer,tostring(round)..':'..(entry.question.correct%4+1)))
             end
         end
-        for i=1,size do assert(totalPaid[players[i].id]==prize/3) end -- Remainders rotate fairly.
+        for i=1,size do assert(totalPaid[players[i].id]==math.floor(prize/2)) end -- Remainders rotate fairly.
         KIP_StartRound(KIP_LivePlayers())
         for _,entry in ipairs(KIP.teams) do
             local before=0
@@ -260,6 +262,13 @@ for _,category in ipairs({'general','christmas'}) do
 end
 reset();Knowledge_SetupSettings({section_knowledge_trivia={general_questions=false,christmas_questions=false}})
 assert(KIP_NextQuestion()==nil);Knowledge_OnPlay();assert(not KIP.running)
+
+-- Team questions remain distinct across deck reshuffles.
+reset()
+for i=1,500 do
+ KIP_StartRound(KIP_LivePlayers())
+ assert(KIP.teams[1].question.id~=KIP.teams[2].question.id)
+end
 
 -- Suggestions are per sender, scoped to their team, and cannot settle a round.
 reset();KIP_StartRound(KIP_LivePlayers());team=KIP.teams[1]
@@ -360,4 +369,4 @@ team.status='correct';team.effects[1]={won=150};KIP_RefreshUI()
 assert(string.find(context.result,'You received 150 of each resource.',1,true))
 ''')
 ET.fromstring(lua.globals().xaml)
-print('PASS: timing, answer/suggestion/pass authority, 3v2 and 4v2 shared bills, rotating remainders, match-long passes, restore, AI pass policy, 10% casualties, AI odds, no-repeat questions, rotation, teammate advice, UI privacy and XAML.')
+print('PASS: timing, answer/suggestion/pass authority, 3v2 and 4v2 shared bills, rotating remainders, match-long passes, restore, AI pass policy, 15% casualties, AI odds, no-repeat questions, rotation, teammate advice, UI privacy and XAML.')
